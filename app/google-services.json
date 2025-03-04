@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "178924748708",
+    "project_id": "logging-91437",
+    "storage_bucket": "logging-91437.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:178924748708:android:7647b06138a5ca05fc4b31",
+        "android_client_info": {
+          "package_name": "com.example.googlesignin"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "178924748708-fp2v6qfal65c5ih305nb8hl7g3mp4jnj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.googlesignin",
+            "certificate_hash": "f22843457a13497738753f4d7290ce8d19068171"
+          }
+        },
+        {
+          "client_id": "178924748708-d9arhg98itkrvcefk0b1hu5r4n5dfehd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHHmg4sd0Y4x2NnCWrUdBkXNL7_fPptxQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "178924748708-d9arhg98itkrvcefk0b1hu5r4n5dfehd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
