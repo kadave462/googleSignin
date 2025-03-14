@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,109 +26,108 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
-import androidx.credentials.PasswordCredential
+import androidx.credentials.exceptions.ClearCredentialException
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.launch
 import java.security.SecureRandom
 import java.util.Base64
-import java.util.UUID
 
 class MainActivity : ComponentActivity() {
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            SignInScreen()
-        }
+        setContent { SignInScreen() }
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignInScreen() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var showErrorSnackbar by remember { mutableStateOf(false) }
-    var showSignUpOption by remember { mutableStateOf(false) }
+
+    var message by remember { mutableStateOf("") }
     var userSignedIn by remember { mutableStateOf(false) }
-    var userSignedUp by remember { mutableStateOf(false) }
 
     val credentialManager = CredentialManager.create(context)
 
-    // Sign-in request
-    val googleIdOptionSignIn = GetGoogleIdOption.Builder()
-        .setFilterByAuthorizedAccounts(true)
-        .setServerClientId(context.getString(R.string.default_web_client_id))
-        .setAutoSelectEnabled(true)
-        .setNonce(generateNonce())
+    // Sign-in request (authorized accounts)
+    val signInRequest = GetCredentialRequest.Builder()
+        .addCredentialOption(
+            GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(true)
+                .setServerClientId(context.getString(R.string.web_client_id))
+                .setAutoSelectEnabled(true)
+                .setNonce(generateNonce())
+                .build()
+        )
         .build()
 
-    val requestSignIn = GetCredentialRequest.Builder()
-        .addCredentialOption(googleIdOptionSignIn)
+    // Sign-up request (allow any Google account)
+    val signUpRequest = GetCredentialRequest.Builder()
+        .addCredentialOption(
+            GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(false)
+                .setServerClientId(context.getString(R.string.web_client_id))
+                .setAutoSelectEnabled(true)
+                .setNonce(generateNonce())
+                .build()
+        )
         .build()
 
-    // Sign-up request
-    val googleIdOptionSignUp = GetGoogleIdOption.Builder()
-        .setFilterByAuthorizedAccounts(false)
-        .setServerClientId(context.getString(R.string.default_web_client_id))
-        .setAutoSelectEnabled(true)
-        .setNonce(generateNonce())
-        .build()
-
-    val requestSignUp = GetCredentialRequest.Builder()
-        .addCredentialOption(googleIdOptionSignUp)
-        .build()
-
-    Scaffold(
-        snackbarHost = {
-            if (showErrorSnackbar) {
-                Snackbar(
-                    action = {
-                        TextButton(onClick = {
-                            showErrorSnackbar = false
-                            showSignUpOption = true
-                        }) {
-                            Text("OK")
-                        }
-                    },
-                    modifier = Modifier.padding(8.dp)
-                ) {
-                    Text("Google Sign-In failed")
-                }
-            }
-        }
-    ) { padding ->
+    Scaffold { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            // Sign-in button
+            // Sign in button
             Button(onClick = {
                 coroutineScope.launch {
                     try {
-                        val result = credentialManager.getCredential(context, requestSignIn)
-                        handleSignIn(result) { isNewUser ->
-                            if (isNewUser) {
-                                userSignedUp = true
-                            } else {
+                        val result = credentialManager.getCredential(context, signInRequest)
+                        // Use callback to handle success/failure
+                        handleCredential(result) { success ->
+                            if (success) {
                                 userSignedIn = true
+                                message = "Signed in successfully!"
+                            } else {
+                                message = "Authentication failed!"
                             }
                         }
                     } catch (e: GetCredentialException) {
-                        showErrorSnackbar = true
-                        Log.e("SignInError", "Google Sign-In failed: ${e.message}")
-
-                        if (e.message == "No credentials available") {
-                            showSignUpOption = true
+                        Log.e("Auth", "Sign in error: ${e.message}")
+                        // If no credentials found, prompt sign up
+                        if (e.message?.contains("No credentials available") == true) {
+                            try {
+                                val result = credentialManager.getCredential(context, signUpRequest)
+                                handleCredential(result) { success ->
+                                    if (success) {
+                                        userSignedIn = true
+                                        message = "New user sign-up successful!"
+                                    } else {
+                                        message = "Authentication failed!"
+                                    }
+                                }
+                            } catch (signUpError: GetCredentialException) {
+                                Log.e("Auth", "Sign up error: ${signUpError.message}")
+                                message = "Authentication failed!"
+                            }
+                        } else {
+                            message = "Authentication failed!"
                         }
                     }
                 }
@@ -138,90 +135,99 @@ fun SignInScreen() {
                 Text("Sign in with Google")
             }
 
-            // Sign-up button (shown if sign-in fails)
-            if (showSignUpOption) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Don't have an account?")
-                Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Sign out button (only show if signed in)
+            if (userSignedIn) {
                 Button(onClick = {
                     coroutineScope.launch {
                         try {
-                            val result = credentialManager.getCredential(context, requestSignUp)
-                            handleSignIn(result) { isNewUser ->
-                                if (isNewUser) {
-                                    userSignedUp = true
-                                } else {
-                                    userSignedIn = true
-                                }
-                            }
-                        } catch (e: GetCredentialException) {
-                            showErrorSnackbar = true
-                            Log.e("SignUpError", "Google Sign-Up failed: ${e.message}")
+                            // Also sign out from Firebase
+                            FirebaseAuth.getInstance().signOut()
+
+                            // Clear the Credential Manager state
+                            val clearRequest = ClearCredentialStateRequest()
+                            credentialManager.clearCredentialState(clearRequest)
+
+                            userSignedIn = false
+                            message = "You have signed out!"
+                        } catch (e: ClearCredentialException) {
+                            Log.e("Auth", "Error clearing credential state: ${e.message}")
+                            message = "Failed to sign out."
                         }
                     }
                 }) {
-                    Text("Sign up")
+                    Text("Sign out")
                 }
             }
 
-            // Signed-in message
-            if (userSignedIn) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("You are signed in!")
-            }
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Signed-up message
-            if (userSignedUp) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("You have successfully signed up!")
+            // Status message
+            if (message.isNotEmpty()) {
+                Text(message)
             }
         }
     }
 }
 
-fun handleSignIn(result: GetCredentialResponse, onSignInComplete: (Boolean) -> Unit) {
+/**
+ * handleCredential uses a callback to return success or failure.
+ * Because FirebaseAuth signInWithCredential is asynchronous,
+ * we can't just return a Boolean immediately.
+ */
+fun handleCredential(result: GetCredentialResponse, onResult: (Boolean) -> Unit) {
     val credential = result.credential
-
     when (credential) {
-        is PasswordCredential -> {
-            // Handle PasswordCredential (if you support it)
-            val username = credential.id
-            val password = credential.password
-            Log.d("SignIn", "Password credential received: username=$username")
-            // TODO: Send username and password to your server for validation
-            // TODO: Determine if the user is new or existing based on server response
-            onSignInComplete(false) // Assuming existing user for now
-        }
-
         is CustomCredential -> {
             if (credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 try {
                     val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                     val idToken = googleIdTokenCredential.idToken
-                    Log.d("SignIn", "Google ID token received: $idToken")
+                    Log.d("Auth", "Google ID token: $idToken")
 
-                    // TODO: Send idToken to your server for verification
-                    // TODO: Use a proper GoogleIdTokenVerifier on your server
-                    // TODO: Determine if the user is new or existing based on server response
-                    onSignInComplete(true) // Assuming new user for now
+                    // Create a Firebase credential with the Google ID token
+                    val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
+                    FirebaseAuth.getInstance().signInWithCredential(firebaseCredential)
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                Log.d("FirebaseAuth", "Firebase sign-in successful")
+                                onResult(true)
+                            } else {
+                                Log.e("FirebaseAuth", "Firebase sign-in failed: ${task.exception?.message}")
+                                onResult(false)
+                            }
+                        }
                 } catch (e: GoogleIdTokenParsingException) {
-                    Log.e("SignInError", "Token parsing error: ${e.message}")
+                    Log.e("Auth", "Token parsing error: ${e.message}")
+                    onResult(false)
                 }
             } else {
-                Log.e("SignInError", "Unrecognized custom credential type: ${credential.type}")
+                Log.e("Auth", "Unexpected credential type: ${credential.type}")
+                onResult(false)
             }
         }
-
         else -> {
-            Log.e("SignInError", "Unrecognized credential type: ${credential.type}")
+            Log.e("Auth", "Unrecognized credential type: ${credential.type}")
+            onResult(false)
         }
     }
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
+/**
+ * Generates a 256-bit nonce and returns a URL-safe Base64 encoded string.
+ */
 fun generateNonce(): String {
     val secureRandom = SecureRandom()
-    val bytes = ByteArray(32) // 32 bytes for a 256-bit nonce
+    val bytes = ByteArray(32)
     secureRandom.nextBytes(bytes)
-    return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    } else {
+        android.util.Base64.encodeToString(
+            bytes,
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP
+        )
+    }
 }
