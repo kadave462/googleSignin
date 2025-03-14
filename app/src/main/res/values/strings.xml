@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">googleSignin</string>
-    <string name="default_web_client_id">178924748708-d9arhg98itkrvcefk0b1hu5r4n5dfehd.apps.googleusercontent.com</string>
+    <string name="web_client_id">178924748708-d9arhg98itkrvcefk0b1hu5r4n5dfehd.apps.googleusercontent.com</string>
 </resources>
